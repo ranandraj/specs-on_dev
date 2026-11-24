@@ -215,9 +215,9 @@
       '.sheet{display:grid;grid-template-columns:repeat(13,' + w + ');grid-auto-rows:' + h + ';gap:0}' +
       '.bc-label{width:' + w + ';height:' + h + ';box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;text-align:center;border:0.2mm dotted #bbb}' +
       '.bc-lname{font-size:5.5pt;line-height:1;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 0.5mm}' +
-      '.bc-lbar{width:13mm;height:8mm;display:block}' +
+      '.bc-lbar{width:13mm;height:10mm;display:block}' +
       '.bc-lprice{font-size:7pt;font-weight:bold;line-height:1.1;margin-top:0.6mm}' +
-      '.size-20-15 .bc-lbar{width:17mm;height:6mm}' +
+      '.size-20-15 .bc-lbar{width:17mm;height:7mm}' +
       '</style></head><body><div class="sheet size-' + labelSize.replace('x', '-') + '">' +
       list.map(function (p) {
         var svg = labelPreviewEl.querySelector('svg[data-barcode="' + CSS.escape(p.barcode) + '"]');
@@ -296,7 +296,7 @@
       '.bc-toolbar button,.bc-actions button{padding:8px 12px;border:1px solid #3b2a1a;background:#3b2a1a;color:#fff;border-radius:8px;cursor:pointer;font-size:12px}' +
       '.bc-toolbar button.bc-alt,.bc-actions button.bc-alt{background:#fff;color:#3b2a1a}' +
       '.bc-row{display:flex;align-items:center;gap:12px;padding:9px;border:1px solid #eee;border-radius:10px;margin-bottom:7px}' +
-      '.bc-mini-wrap{width:96px;flex:0 0 96px;text-align:center}.bc-mini-wrap svg{max-width:96px;height:30px}' +
+      '.bc-mini-wrap{width:130px;flex:0 0 130px;text-align:center}.bc-mini-wrap svg{max-width:130px;height:42px}' +
       '.bc-none{color:#bbb;font-size:12px}.bc-info{flex:1;min-width:0}.bc-info b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bc-info small{color:#777;font-size:12px}' +
       '.bc-code{color:#2d6a4f;font-weight:600}.bc-missing{color:#c1121f;font-weight:600}.bc-input{width:100%;max-width:220px;padding:7px;border:1px solid #3b2a1a;border-radius:6px}' +
       '.bc-actions{display:flex;gap:6px;flex-wrap:wrap}' +
@@ -310,13 +310,13 @@
       '.bc-label{width:15mm;height:20mm;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;text-align:center;border:1px solid #ddd;box-sizing:border-box;padding:0.4mm}' +
       '.bc-labels.size-20-15 .bc-label{width:20mm;height:15mm}' +
       '.bc-lname{font-size:5.5pt;line-height:1;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
-      '.bc-lbar{width:13mm;height:8mm;display:block}.bc-labels.size-20-15 .bc-lbar{width:17mm;height:6mm}' +
+      '.bc-lbar{width:13mm;height:10mm;display:block}.bc-labels.size-20-15 .bc-lbar{width:17mm;height:7mm}' +
       '.bc-lprice{font-size:7pt;font-weight:bold;line-height:1.1;margin-top:0.6mm}' +
       '#bc-toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);background:#1b4332;color:#fff;padding:10px 18px;border-radius:999px;z-index:10000;font:13px Arial,sans-serif;opacity:0;pointer-events:none;transition:.22s;box-shadow:0 8px 24px #0004;max-width:90vw;text-align:center}' +
       '#bc-toast.show{opacity:1;transform:translate(-50%,0)}#bc-toast.bad{background:#9d0208}' +
       '@media(max-width:700px){.bc-labelgrid{grid-template-columns:1fr}.bc-mini-wrap{display:none}}' +
       '</style>' +
-      '<button id="bc-fab" type="button">⌖ Barcode Tools</button>' +
+      '<button id="bc-fab" type="button" title="Assign barcodes, scan with camera, print labels">⌖ Barcode Tools</button>' +
       '<div id="bc-modal"><div class="bc-box">' +
       '<div class="bc-head"><h2>🏷️ Barcode Tools</h2><button type="button" id="bc-close" style="border:0;background:none;font-size:22px;cursor:pointer">×</button></div>' +
       '<div class="bc-tabs"><button type="button" data-tab="assign" class="active">Assign</button><button type="button" data-tab="scan">Scan</button><button type="button" data-tab="labels">Labels</button></div>' +
@@ -408,6 +408,16 @@
     } catch (e) { toast('Could not load products: ' + e.message, true); }
   }
 
+  async function scanNow() {
+    await open();
+    root.querySelectorAll('.bc-tabs button').forEach(function (b) { b.classList.remove('active'); });
+    root.querySelectorAll('.bc-pane').forEach(function (x) { x.classList.remove('active'); });
+    var tab = root.querySelector('.bc-tabs button[data-tab="scan"]');
+    tab.classList.add('active');
+    root.querySelector('#bc-pane-scan').classList.add('active');
+    if (!scanning) await startScan();
+  }
+
   function close() {
     stopScan();
     root.querySelector('#bc-modal').classList.remove('open');
@@ -425,5 +435,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 
-  window.SpecsBarcode = { refresh: loadProducts, open: open };
+  window.SpecsBarcode = { refresh: loadProducts, open: open, scan: scanNow };
 })();

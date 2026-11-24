@@ -15,9 +15,10 @@
    - Press **Edit** to type your own code, or **Generate all missing** for bulk assignment.
    - A small live Code 128 preview is shown next to each assigned product.
    - The same barcode field is also available in the **Inventory → Add / Edit Products** form.
-3. **Scan** tab
-   - Press **Start camera**, allow camera access, and point the device camera at a barcode.
-   - On a match, the app opens the billing panel (if needed) and adds the item to the cart.
+3. **Scan** tab / billing button
+   - On the billing screen, press the green **SCAN BARCODE** button, or open **Barcode Tools → Scan**.
+   - Allow camera access and point the device camera at a barcode.
+   - On a match, the app adds the item to the cart instantly.
 4. **Labels** tab
    - Select products (or **Select all**), choose the label size, and press **Print A4 labels**.
    - The printed sheet includes the product name, Code 128 barcode, and the price below the barcode.
