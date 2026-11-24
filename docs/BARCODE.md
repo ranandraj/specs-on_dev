@@ -18,6 +18,7 @@
 3. **Scan** tab / billing button
    - On the billing screen, press the green **SCAN BARCODE** button, or open **Barcode Tools → Scan**.
    - Allow camera access and point the device camera at a barcode. Code 128, EAN/UPC and other common formats are supported.
+   - If the camera cannot read a code, type or paste it into **Or type / paste barcode here** and press **Use code** — it follows the same flow. Camera permission problems are shown in the status line.
    - **Known code:** the item is added to the cart instantly.
    - **Unknown / unlabeled code:** enter a name and price, then choose:
      - **Add to cart only** — bill it without saving a product.

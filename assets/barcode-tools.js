@@ -20,6 +20,8 @@
   var selected = new Set();
   var scanControls = null;
   var scanning = false;
+  var nativeTimer = null;
+  var scanHint = null;
   var labelSize = '15x20';
   var root, listEl, searchEl, labelListEl, labelPreviewEl, videoEl, scanStatusEl, startBtn, stopBtn;
 
@@ -234,7 +236,9 @@
 
   function stopScan() {
     try { if (scanControls) scanControls.stop(); } catch (e) {}
-    scanControls = null; scanning = false;
+    try { if (nativeTimer) clearInterval(nativeTimer); } catch (e) {}
+    try { if (scanHint) clearTimeout(scanHint); } catch (e) {}
+    scanControls = null; nativeTimer = null; scanHint = null; scanning = false;
     if (videoEl) videoEl.srcObject = null;
     if (startBtn) startBtn.disabled = false;
     if (stopBtn) stopBtn.disabled = true;
@@ -316,23 +320,70 @@
   }
 
   async function startScan() {
-    if (!window.ZXingBrowser) { toast('Scanner library not loaded', true); return; }
+    if (!window.ZXingBrowser && !window.BarcodeDetector) { toast('Scanner not available in this browser', true); return; }
     startBtn.disabled = true; stopBtn.disabled = false;
     scanStatusEl.textContent = 'Starting camera…';
     try {
+      if (navigator.permissions && navigator.permissions.query) {
+        try {
+          var perm = await navigator.permissions.query({ name: 'camera' });
+          if (perm.state === 'denied') {
+            startBtn.disabled = false; stopBtn.disabled = true;
+            scanStatusEl.textContent = 'Camera blocked — allow it in the address bar, or type the code below.';
+            return;
+          }
+        } catch (e) {}
+      }
       if (!products.length) await loadProducts();
-      var reader = new ZXingBrowser.BrowserMultiFormatReader();
-      var devices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
-      var dev = devices.find(function (d) { return /back|rear|environment/i.test(d.label || ''); }) || devices[0];
-      scanControls = await reader.decodeFromVideoDevice(dev && dev.deviceId, videoEl, function (result, err) {
-        if (result) handleScan(result.getText());
-      });
-      scanning = true;
-      scanStatusEl.textContent = 'Camera on — point at a barcode.';
+      var usedNative = false;
+      if (window.BarcodeDetector && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          var supported = [];
+          if (typeof BarcodeDetector.getSupportedFormats === 'function') supported = await BarcodeDetector.getSupportedFormats();
+          var wanted = supported.filter(function (f) { return /code_128|ean_13|ean_8|upc_a|upc_e|code_39|code_93|itf|qr_code/i.test(f); });
+          var detector = new BarcodeDetector(wanted.length ? { formats: wanted } : undefined);
+          var stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false
+          });
+          videoEl.srcObject = stream;
+          await videoEl.play();
+          scanning = true; usedNative = true;
+          nativeTimer = setInterval(async function () {
+            if (!scanning) return;
+            try {
+              var codes = await detector.detect(videoEl);
+              if (codes && codes.length) handleScan(codes[0].rawValue);
+            } catch (e) {}
+          }, 250);
+          scanControls = { stop: function () {
+            try { clearInterval(nativeTimer); } catch (e) {}
+            nativeTimer = null;
+            try { stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+          }};
+          scanStatusEl.textContent = 'Camera on (fast scanner) — point at a barcode.';
+        } catch (e) { /* fall back to ZXing */ }
+      }
+      if (!usedNative) {
+        var reader = new ZXingBrowser.BrowserMultiFormatReader();
+        var devices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
+        var dev = devices.find(function (d) { return /back|rear|environment/i.test(d.label || ''); }) || devices[0];
+        scanControls = await reader.decodeFromVideoDevice(dev && dev.deviceId ? dev.deviceId : null, videoEl, function (result, err) {
+          if (result) handleScan(result.getText());
+        });
+        scanning = true;
+        scanStatusEl.textContent = 'Camera on — point at a barcode.';
+      }
+      if (scanHint) clearTimeout(scanHint);
+      scanHint = setTimeout(function () {
+        if (scanning) scanStatusEl.textContent = 'No code yet — hold closer, improve light, or type the code below.';
+      }, 7000);
     } catch (e) {
       stopScan();
-      scanStatusEl.textContent = 'Camera error: ' + e.message;
-      toast('Camera unavailable: ' + e.message, true);
+      var msg = e && e.name === 'NotAllowedError'
+        ? 'Camera permission denied — allow it in the address bar, or type the code below.'
+        : 'Camera error: ' + (e && e.message ? e.message : 'unknown') + ' — you can type the code below.';
+      scanStatusEl.textContent = msg;
+      toast('Camera unavailable — you can still type the barcode', true);
     }
   }
 
@@ -396,6 +447,7 @@
       '<video id="bc-video" playsinline muted></video><div class="bc-scaninfo">' +
       '<h3>Scan with device camera</h3><p>The camera reads Code 128, EAN/UPC and other common barcodes. Known codes add the item instantly; unknown codes can still be billed or attached to a product.</p>' +
       '<div class="bc-toolbar"><button type="button" id="bc-start">Start camera</button><button type="button" id="bc-stop" class="bc-alt" disabled>Stop</button></div>' +
+      '<div class="bc-toolbar" style="margin-top:6px"><input id="bc-manual-code" placeholder="Or type / paste barcode here" /><button type="button" id="bc-manual-use">Use code</button></div>' +
       '<p id="bc-scanstatus">Camera off.</p></div></div></div>' +
       '<div class="bc-pane" id="bc-pane-unknown"><div class="bc-unknown">' +
       '<h3>Barcode not found in catalog</h3>' +
@@ -439,6 +491,15 @@
     root.querySelector('#bc-genall').onclick = generateMissing;
     startBtn.onclick = startScan;
     stopBtn.onclick = stopScan;
+    var useManual = function () {
+      var v = root.querySelector('#bc-manual-code').value.trim();
+      if (!v) { toast('Enter a barcode first', true); return; }
+      handleScan(v);
+    };
+    root.querySelector('#bc-manual-use').onclick = useManual;
+    root.querySelector('#bc-manual-code').onkeydown = function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); useManual(); }
+    };
     root.querySelector('#bc-add-manual').onclick = function () { finishUnknown('manual'); };
     root.querySelector('#bc-save-product').onclick = function () { finishUnknown('new'); };
     root.querySelector('#bc-assign-existing').onclick = toggleAssignArea;
