@@ -22,7 +22,7 @@
   var scanning = false;
   var nativeTimer = null;
   var scanHint = null;
-  var labelSize = '15x20';
+  var labelSize = '20x15';
   var root, listEl, searchEl, labelListEl, labelPreviewEl, videoEl, scanStatusEl, startBtn, stopBtn;
 
   function esc(s) {
@@ -212,16 +212,17 @@
         svg.setAttribute('data-drawn', '1');
       } catch (e) {}
     }
-    var w = labelSize === '15x20' ? '15mm' : '20mm';
-    var h = labelSize === '15x20' ? '20mm' : '15mm';
+    var w = labelSize === '20x15' ? '20mm' : '15mm';
+    var h = labelSize === '20x15' ? '15mm' : '20mm';
+    var cols = labelSize === '20x15' ? 10 : 13;
     var html = '<!doctype html><html><head><meta charset="utf-8"><title>Barcode labels</title><style>' +
       '@page{size:A4;margin:5mm}body{margin:0;font-family:Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
-      '.sheet{display:grid;grid-template-columns:repeat(13,' + w + ');grid-auto-rows:' + h + ';gap:0}' +
-      '.bc-label{width:' + w + ';height:' + h + ';box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;text-align:center;border:0.2mm dotted #bbb}' +
-      '.bc-lname{font-size:5.5pt;line-height:1;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 0.5mm}' +
-      '.bc-lbar{width:13mm;height:10mm;display:block}' +
-      '.bc-lprice{font-size:7pt;font-weight:bold;line-height:1.1;margin-top:0.6mm}' +
-      '.size-20-15 .bc-lbar{width:17mm;height:7mm}' +
+      '.sheet{display:grid;grid-template-columns:repeat(' + cols + ',' + w + ');grid-auto-rows:' + h + ';gap:0}' +
+      '.bc-label{width:' + w + ';height:' + h + ';box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;overflow:hidden;text-align:center;padding:0.3mm 0.5mm;border:0.2mm dotted #bbb}' +
+      '.bc-lname{font-size:5.2pt;line-height:1;margin:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 0.4mm}' +
+      '.bc-lbar{width:17mm;height:7.5mm;display:block;margin:0}' +
+      '.bc-lprice{font-size:7pt;font-weight:bold;line-height:1;margin:0.2mm 0 0}' +
+      '.size-15-20 .bc-lbar{width:13mm;height:10mm}' +
       '</style></head><body><div class="sheet size-' + labelSize.replace('x', '-') + '">' +
       list.map(function (p) {
         var svg = labelPreviewEl.querySelector('svg[data-barcode="' + CSS.escape(p.barcode) + '"]');
@@ -426,11 +427,11 @@
       '.bc-checks{max-height:420px;overflow:auto;border:1px solid #eee;border-radius:10px;padding:8px}' +
       '.bc-check{display:flex;gap:6px;align-items:center;padding:4px 2px;font-size:13px;cursor:pointer}.bc-check span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bc-check small{color:#888;font-size:10px}' +
       '.bc-labels{display:flex;flex-wrap:wrap;gap:2mm;background:#f3f3f3;padding:8px;border-radius:10px;max-height:430px;overflow:auto}' +
-      '.bc-label{width:15mm;height:20mm;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;text-align:center;border:1px solid #ddd;box-sizing:border-box;padding:0.4mm}' +
-      '.bc-labels.size-20-15 .bc-label{width:20mm;height:15mm}' +
-      '.bc-lname{font-size:5.5pt;line-height:1;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
-      '.bc-lbar{width:13mm;height:10mm;display:block}.bc-labels.size-20-15 .bc-lbar{width:17mm;height:7mm}' +
-      '.bc-lprice{font-size:7pt;font-weight:bold;line-height:1.1;margin-top:0.6mm}' +
+      '.bc-label{width:20mm;height:15mm;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;overflow:hidden;text-align:center;padding:0.3mm 0.5mm;border:1px solid #ddd;box-sizing:border-box}' +
+      '.bc-labels.size-15-20 .bc-label{width:15mm;height:20mm}' +
+      '.bc-lname{font-size:5.2pt;line-height:1;margin:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      '.bc-lbar{width:17mm;height:7.5mm;display:block;margin:0}.bc-labels.size-15-20 .bc-lbar{width:13mm;height:10mm}' +
+      '.bc-lprice{font-size:7pt;font-weight:bold;line-height:1;margin:0.2mm 0 0}' +
       '#bc-toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);background:#1b4332;color:#fff;padding:10px 18px;border-radius:999px;z-index:10000;font:13px Arial,sans-serif;opacity:0;pointer-events:none;transition:.22s;box-shadow:0 8px 24px #0004;max-width:90vw;text-align:center}' +
       '#bc-toast.show{opacity:1;transform:translate(-50%,0)}#bc-toast.bad{background:#9d0208}' +
       '@media(max-width:700px){.bc-labelgrid{grid-template-columns:1fr}.bc-mini-wrap{display:none}}' +
@@ -458,7 +459,7 @@
       '<div id="bc-assign-area" style="display:none"><select id="bc-assign-product"></select><button type="button" id="bc-assign-confirm">Assign & add</button></div>' +
       '</div></div>' +
       '<div class="bc-pane" id="bc-pane-labels"><div class="bc-toolbar">' +
-      '<select id="bc-size"><option value="15x20">15 × 20 mm</option><option value="20x15">20 × 15 mm</option></select>' +
+      '<select id="bc-size"><option value="20x15" selected>20 × 15 mm (landscape)</option><option value="15x20">15 × 20 mm</option></select>' +
       '<button type="button" id="bc-selall">Select all</button><button type="button" id="bc-print">Print A4 labels</button>' +
       '<span style="font-size:12px;color:#777">Price is printed below every barcode</span></div>' +
       '<div class="bc-labelgrid"><div class="bc-checks" id="bc-label-list"></div><div class="bc-labels" id="bc-label-preview"></div></div></div>' +

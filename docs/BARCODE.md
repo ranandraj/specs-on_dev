@@ -4,8 +4,8 @@
 
 - **Code 128 generation and assignment** for every inventory product.
 - **Camera scanning** in the billing/POS panel; a scanned item is added to the cart instantly.
-- **Barcode label printing** on A4 sheets, 15 × 20 mm by default (20 × 15 mm also available).
-- **Price under every barcode** on the printed label.
+- **Barcode label printing** on A4 sheets, 20 × 15 mm landscape by default (15 × 20 mm also available).
+- Each label is stacked tightly as **product name → Code 128 barcode → price**.
 
 ## How to use
 
@@ -26,7 +26,7 @@
      - **Assign to existing product** — attach the scanned code to a catalog item.
 4. **Labels** tab
    - Select products (or **Select all**), choose the label size, and press **Print A4 labels**.
-   - The printed sheet includes the product name, Code 128 barcode, and the price below the barcode.
+   - The printed sheet shows the product name on top, the Code 128 barcode in the middle, and the price directly below it.
 
 ## Files
 
