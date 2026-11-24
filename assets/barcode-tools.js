@@ -1,6 +1,12 @@
 (function () {
   'use strict';
 
+  try {
+    if (location.pathname === '/' && /[?&]specsView=pos(?:[&#]|$)/.test(location.search)) {
+      history.replaceState(null, '', '/pos' + (location.hash || ''));
+    }
+  } catch (e) {}
+
   var CFG = window.__SUPABASE_CONFIG__ || {};
   if (!CFG.url || !CFG.anonKey) {
     console.warn('[barcode-tools] Supabase config missing');
@@ -322,7 +328,7 @@
     sessionStorage.setItem('specs.pendingBarcodeProduct', JSON.stringify(p));
     stopScan();
     if (/^\/pos(\/|$)/.test(location.pathname)) deliver(p);
-    else { toast('Opening billing panel…'); location.href = '/pos'; }
+    else { toast('Opening billing panel…'); location.href = '/?specsView=pos'; }
   }
 
   async function startScan() {
