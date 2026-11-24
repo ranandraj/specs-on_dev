@@ -9,14 +9,14 @@
 
 ## How to use
 
-1. Open **Barcode Tools** (floating button, bottom-right of any page).
+1. Open **Barcode Tools** from the dashboard sidebar (**above Inventory**) or from the billing panel button beside **SEARCH CATALOG**. There is no floating corner button.
 2. **Assign** tab
    - Search for a product and press **Generate** to assign an automatic code (`SP000123`).
    - Press **Edit** to type your own code, or **Generate all missing** for bulk assignment.
    - A small live Code 128 preview is shown next to each assigned product.
    - The same barcode field is also available in the **Inventory → Add / Edit Products** form.
 3. **Scan** tab / billing button
-   - On the billing screen, use **SCAN BARCODE** for the camera, or **BARCODE TOOLS** (next to **SEARCH CATALOG**) for the full panel. The corner button is still available on other pages.
+   - On the billing screen, use **SCAN BARCODE** for the camera, or **BARCODE TOOLS** (next to **SEARCH CATALOG**) to switch the sidebar to the Barcode Tools section — the same effect as the other sidebar buttons. On standalone `/pos`, it opens the tools popup.
    - A scan from any page is always added to the current bill; the app returns to the billing panel and adds the item automatically.
    - Allow camera access and point the device camera at a barcode. Code 128, EAN/UPC and other common formats are supported.
    - If the camera cannot read a code, type or paste it into **Or type / paste barcode here** and press **Use code** — it follows the same flow. Camera permission problems are shown in the status line.

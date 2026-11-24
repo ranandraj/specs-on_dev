@@ -22,6 +22,7 @@
   var scanning = false;
   var nativeTimer = null;
   var scanHint = null;
+  var inlineMode = false;
   var labelSize = '20x15';
   var root, listEl, searchEl, labelListEl, labelPreviewEl, videoEl, scanStatusEl, startBtn, stopBtn;
 
@@ -397,8 +398,9 @@
     root.id = 'specs-barcode-root';
     root.innerHTML =
       '<style>' +
-      '#bc-fab{position:fixed;right:18px;bottom:18px;z-index:9998;background:#3b2a1a;color:#fff;border:0;border-radius:999px;padding:12px 18px;font:600 13px Arial,sans-serif;box-shadow:0 6px 18px #0004;cursor:pointer}' +
-      '#bc-fab:hover{background:#5a4128}' +
+      '.bc-inline #bc-modal{position:static;display:block;background:transparent;padding:0}' +
+      '.bc-inline .bc-box{width:100%;max-height:none;box-shadow:none;border:1px solid #ddd;border-radius:12px}' +
+      '.bc-inline .bc-head{display:none}' +
       '#bc-modal{position:fixed;inset:0;z-index:9999;background:#0008;display:none;align-items:center;justify-content:center;padding:16px;font-family:Arial,sans-serif}' +
       '#bc-modal.open{display:flex}' +
       '.bc-box{background:#fff;width:min(980px,100%);max-height:92vh;overflow:auto;border-radius:14px;box-shadow:0 20px 60px #0006}' +
@@ -441,7 +443,6 @@
       '#bc-toast.show{opacity:1;transform:translate(-50%,0)}#bc-toast.bad{background:#9d0208}' +
       '@media(max-width:700px){.bc-labelgrid{grid-template-columns:1fr}.bc-mini-wrap{display:none}}' +
       '</style>' +
-      '<button id="bc-fab" type="button" title="Assign barcodes, scan with camera, print labels">⌖ Barcode Tools</button>' +
       '<div id="bc-modal"><div class="bc-box">' +
       '<div class="bc-head"><h2>🏷️ Barcode Tools</h2><button type="button" id="bc-close" style="border:0;background:none;font-size:22px;cursor:pointer">×</button></div>' +
       '<div class="bc-tabs"><button type="button" data-tab="assign" class="active">Assign</button><button type="button" data-tab="scan">Scan</button><button type="button" data-tab="labels">Labels</button></div>' +
@@ -480,7 +481,6 @@
     startBtn = root.querySelector('#bc-start');
     stopBtn = root.querySelector('#bc-stop');
 
-    root.querySelector('#bc-fab').onclick = open;
     root.querySelector('#bc-close').onclick = close;
     root.querySelectorAll('.bc-tabs button').forEach(function (b) {
       b.onclick = function () {
@@ -563,8 +563,29 @@
   }
 
   function close() {
+    if (inlineMode) return;
     stopScan();
     root.querySelector('#bc-modal').classList.remove('open');
+  }
+
+  function mountInline(host) {
+    if (!host || !root) return;
+    inlineMode = true;
+    root.classList.add('bc-inline');
+    if (root.parentNode !== host) host.appendChild(root);
+    root.querySelector('#bc-modal').classList.add('open');
+    if (!products.length) {
+      loadProducts().then(function () { renderAssign(); renderLabels(); }).catch(function () {});
+    }
+  }
+
+  function unmountInline() {
+    if (!inlineMode) return;
+    stopScan();
+    inlineMode = false;
+    root.classList.remove('bc-inline');
+    root.querySelector('#bc-modal').classList.remove('open');
+    if (root.parentNode !== document.body) document.body.appendChild(root);
   }
 
   function boot() {
@@ -579,5 +600,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 
-  window.SpecsBarcode = { refresh: loadProducts, open: open, scan: scanNow, handleCode: handleScan };
+  window.SpecsBarcode = { refresh: loadProducts, open: open, scan: scanNow, handleCode: handleScan, mountInline: mountInline, unmountInline: unmountInline };
 })();
