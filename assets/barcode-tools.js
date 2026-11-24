@@ -11,10 +11,12 @@
   var HEADERS = {
     apikey: CFG.anonKey,
     Authorization: 'Bearer ' + CFG.anonKey,
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    Prefer: 'return=representation'
   };
 
   var products = [];
+  var lastScanned = '';
   var selected = new Set();
   var scanControls = null;
   var scanning = false;
@@ -61,7 +63,7 @@
   async function saveBarcode(id, code) {
     code = String(code || '').trim().toUpperCase();
     if (!code) throw new Error('Barcode cannot be empty');
-    if (!/^[A-Z0-9.\- ]{1,32}$/.test(code)) throw new Error('Use letters, numbers, dot, dash or space (max 32)');
+    if (!/^[\x20-\x7E]{1,64}$/.test(code)) throw new Error('Barcode must be 1-64 printable characters');
     var dup = products.find(function (p) { return p.id !== id && p.barcode && p.barcode.trim().toUpperCase() === code; });
     if (dup) throw new Error('Already assigned to ' + dup.name);
     await api('?id=eq.' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify({ barcode: code }) });
@@ -244,9 +246,69 @@
     toast('Added ' + p.name + ' · ' + priceOf(p));
   }
 
+  function setPane(name) {
+    root.querySelectorAll('.bc-tabs button').forEach(function (b) { b.classList.remove('active'); });
+    root.querySelectorAll('.bc-pane').forEach(function (x) { x.classList.remove('active'); });
+    var tab = root.querySelector('.bc-tabs button[data-tab="' + name + '"]');
+    if (tab) tab.classList.add('active');
+    var pane = root.querySelector('#bc-pane-' + name);
+    if (pane) pane.classList.add('active');
+  }
+
+  function showUnknown(code) {
+    lastScanned = String(code || '').trim();
+    root.querySelector('#bc-unknown-code').textContent = lastScanned;
+    root.querySelector('#bc-unknown-name').value = lastScanned;
+    root.querySelector('#bc-unknown-price').value = '';
+    root.querySelector('#bc-assign-area').style.display = 'none';
+    setPane('unknown');
+  }
+
+  function toggleAssignArea() {
+    var area = root.querySelector('#bc-assign-area');
+    if (area.style.display !== 'none') { area.style.display = 'none'; return; }
+    root.querySelector('#bc-assign-product').innerHTML = products.map(function (p) {
+      return '<option value="' + p.id + '">' + esc(p.name) + '</option>';
+    }).join('');
+    area.style.display = 'block';
+  }
+
+  async function finishUnknown(mode) {
+    var name = root.querySelector('#bc-unknown-name').value.trim() || lastScanned;
+    var price = Number(root.querySelector('#bc-unknown-price').value);
+    if (!(price > 0)) { toast('Enter a price greater than 0', true); return; }
+    try {
+      if (mode === 'manual') {
+        deliver({ id: 'barcode-' + lastScanned, name: name, price: price, offer_price: null, barcode: lastScanned });
+      } else if (mode === 'new') {
+        var rows = await api('', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: name, category: 'Uncategorized', price: price, barcode: lastScanned,
+            is_active: true, unit: '1pc', base_quantity: 1, unit_type: 'unit', unit_label: 'pc'
+          })
+        });
+        var created = Array.isArray(rows) ? rows[0] : rows;
+        products.push(created);
+        deliver(created);
+        renderAssign(); renderLabels();
+      } else if (mode === 'assign') {
+        var id = Number(root.querySelector('#bc-assign-product').value);
+        if (!id) { toast('Choose a product', true); return; }
+        await saveBarcode(id, lastScanned);
+        var prod = products.find(function (p) { return p.id === id; });
+        deliver(prod);
+        renderAssign(); renderLabels();
+      }
+      setPane('scan');
+      if (!scanning) await startScan();
+    } catch (e) { toast(e.message, true); }
+  }
+
   function handleScan(text) {
-    var p = products.find(function (x) { return x.barcode && x.barcode.trim().toUpperCase() === String(text).trim().toUpperCase(); });
-    if (!p) { toast('Unknown barcode: ' + text, true); return; }
+    var code = String(text || '').trim();
+    var p = products.find(function (x) { return x.barcode && x.barcode.trim().toUpperCase() === code.toUpperCase(); });
+    if (!p) { showUnknown(code); return; }
     sessionStorage.setItem('specs.pendingBarcodeProduct', JSON.stringify(p));
     stopScan();
     if (/^\/pos(\/|$)/.test(location.pathname)) deliver(p);
@@ -260,7 +322,6 @@
     try {
       if (!products.length) await loadProducts();
       var reader = new ZXingBrowser.BrowserMultiFormatReader();
-      reader.possibleFormats = [ZXingBrowser.BarcodeFormat.CODE_128];
       var devices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
       var dev = devices.find(function (d) { return /back|rear|environment/i.test(d.label || ''); }) || devices[0];
       scanControls = await reader.decodeFromVideoDevice(dev && dev.deviceId, videoEl, function (result, err) {
@@ -303,6 +364,13 @@
       '.bc-empty{padding:18px;color:#888;text-align:center;font-size:13px}' +
       '.bc-scanwrap{display:flex;gap:18px;flex-wrap:wrap}.bc-scanwrap video{width:340px;max-width:100%;height:230px;background:#111;border-radius:10px;object-fit:cover}.bc-scaninfo{flex:1;min-width:220px}' +
       '.bc-scaninfo p{font-size:13px;color:#555;line-height:1.5}' +
+      '.bc-unknown{background:#fff8ed;border:1px solid #f0d9b5;border-radius:12px;padding:16px}' +
+      '.bc-unknown h3{margin:0 0 8px;color:#8a4b08;font-size:17px}' +
+      '.bc-unknown-note{font-size:13px;color:#665;line-height:1.5}' +
+      '.bc-scanned{font:600 14px Arial,sans-serif;color:#3b2a1a;background:#fff;border:1px dashed #c9a227;border-radius:8px;padding:10px;word-break:break-all}' +
+      '.bc-toolbar input:not([type=search]){padding:9px 11px;border:1px solid #ccc;border-radius:8px;font-size:14px}' +
+      '#bc-assign-area{display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap}' +
+      '#bc-assign-product{padding:9px;border:1px solid #ccc;border-radius:8px;max-width:320px}' +
       '.bc-labelgrid{display:grid;grid-template-columns:260px 1fr;gap:16px}' +
       '.bc-checks{max-height:420px;overflow:auto;border:1px solid #eee;border-radius:10px;padding:8px}' +
       '.bc-check{display:flex;gap:6px;align-items:center;padding:4px 2px;font-size:13px;cursor:pointer}.bc-check span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bc-check small{color:#888;font-size:10px}' +
@@ -326,9 +394,17 @@
       '<button type="button" id="bc-refresh" class="bc-alt">Refresh</button></div><div id="bc-list"></div></div>' +
       '<div class="bc-pane" id="bc-pane-scan"><div class="bc-scanwrap">' +
       '<video id="bc-video" playsinline muted></video><div class="bc-scaninfo">' +
-      '<h3>Scan with device camera</h3><p>The camera scans Code 128 barcodes. On a successful scan the item is added instantly to the billing cart. Keep the barcode steady inside the camera view.</p>' +
+      '<h3>Scan with device camera</h3><p>The camera reads Code 128, EAN/UPC and other common barcodes. Known codes add the item instantly; unknown codes can still be billed or attached to a product.</p>' +
       '<div class="bc-toolbar"><button type="button" id="bc-start">Start camera</button><button type="button" id="bc-stop" class="bc-alt" disabled>Stop</button></div>' +
       '<p id="bc-scanstatus">Camera off.</p></div></div></div>' +
+      '<div class="bc-pane" id="bc-pane-unknown"><div class="bc-unknown">' +
+      '<h3>Barcode not found in catalog</h3>' +
+      '<p class="bc-unknown-note">This code can still be billed. Enter a name and price, save it as a new product, or attach it to an existing one.</p>' +
+      '<p class="bc-scanned">Scanned: <b id="bc-unknown-code"></b></p>' +
+      '<div class="bc-toolbar"><input id="bc-unknown-name" placeholder="Item name" /><input id="bc-unknown-price" type="number" min="0" step="0.01" placeholder="Price ₹" /></div>' +
+      '<div class="bc-toolbar"><button type="button" id="bc-add-manual">Add to cart only</button><button type="button" id="bc-save-product">Save as product & add</button><button type="button" id="bc-assign-existing" class="bc-alt">Assign to existing product</button><button type="button" id="bc-unknown-cancel" class="bc-alt">Back to scan</button></div>' +
+      '<div id="bc-assign-area" style="display:none"><select id="bc-assign-product"></select><button type="button" id="bc-assign-confirm">Assign & add</button></div>' +
+      '</div></div>' +
       '<div class="bc-pane" id="bc-pane-labels"><div class="bc-toolbar">' +
       '<select id="bc-size"><option value="15x20">15 × 20 mm</option><option value="20x15">20 × 15 mm</option></select>' +
       '<button type="button" id="bc-selall">Select all</button><button type="button" id="bc-print">Print A4 labels</button>' +
@@ -363,6 +439,11 @@
     root.querySelector('#bc-genall').onclick = generateMissing;
     startBtn.onclick = startScan;
     stopBtn.onclick = stopScan;
+    root.querySelector('#bc-add-manual').onclick = function () { finishUnknown('manual'); };
+    root.querySelector('#bc-save-product').onclick = function () { finishUnknown('new'); };
+    root.querySelector('#bc-assign-existing').onclick = toggleAssignArea;
+    root.querySelector('#bc-assign-confirm').onclick = function () { finishUnknown('assign'); };
+    root.querySelector('#bc-unknown-cancel').onclick = async function () { setPane('scan'); if (!scanning) await startScan(); };
     root.querySelector('#bc-selall').onclick = function () {
       var assigned = products.filter(function (p) { return p.barcode; });
       if (selected.size === assigned.length) selected.clear();
@@ -410,11 +491,7 @@
 
   async function scanNow() {
     await open();
-    root.querySelectorAll('.bc-tabs button').forEach(function (b) { b.classList.remove('active'); });
-    root.querySelectorAll('.bc-pane').forEach(function (x) { x.classList.remove('active'); });
-    var tab = root.querySelector('.bc-tabs button[data-tab="scan"]');
-    tab.classList.add('active');
-    root.querySelector('#bc-pane-scan').classList.add('active');
+    setPane('scan');
     if (!scanning) await startScan();
   }
 
@@ -435,5 +512,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 
-  window.SpecsBarcode = { refresh: loadProducts, open: open, scan: scanNow };
+  window.SpecsBarcode = { refresh: loadProducts, open: open, scan: scanNow, handleCode: handleScan };
 })();

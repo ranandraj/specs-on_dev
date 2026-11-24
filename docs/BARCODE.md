@@ -17,8 +17,12 @@
    - The same barcode field is also available in the **Inventory → Add / Edit Products** form.
 3. **Scan** tab / billing button
    - On the billing screen, press the green **SCAN BARCODE** button, or open **Barcode Tools → Scan**.
-   - Allow camera access and point the device camera at a barcode.
-   - On a match, the app adds the item to the cart instantly.
+   - Allow camera access and point the device camera at a barcode. Code 128, EAN/UPC and other common formats are supported.
+   - **Known code:** the item is added to the cart instantly.
+   - **Unknown / unlabeled code:** enter a name and price, then choose:
+     - **Add to cart only** — bill it without saving a product.
+     - **Save as product & add** — create a new inventory item with that barcode.
+     - **Assign to existing product** — attach the scanned code to a catalog item.
 4. **Labels** tab
    - Select products (or **Select all**), choose the label size, and press **Print A4 labels**.
    - The printed sheet includes the product name, Code 128 barcode, and the price below the barcode.
