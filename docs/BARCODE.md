@@ -16,7 +16,8 @@
    - A small live Code 128 preview is shown next to each assigned product.
    - The same barcode field is also available in the **Inventory → Add / Edit Products** form.
 3. **Scan** tab / billing button
-   - On the billing screen, press the green **SCAN BARCODE** button, or open **Barcode Tools → Scan**.
+   - On the billing screen, use **SCAN BARCODE** for the camera, or **BARCODE TOOLS** (next to **SEARCH CATALOG**) for the full panel. The corner button is still available on other pages.
+   - A scan from any page is always added to the current bill; the app returns to the billing panel and adds the item automatically.
    - Allow camera access and point the device camera at a barcode. Code 128, EAN/UPC and other common formats are supported.
    - If the camera cannot read a code, type or paste it into **Or type / paste barcode here** and press **Use code** — it follows the same flow. Camera permission problems are shown in the status line.
    - **Known code:** the item is added to the cart instantly.
@@ -26,7 +27,7 @@
      - **Assign to existing product** — attach the scanned code to a catalog item.
 4. **Labels** tab
    - Select products (or **Select all**), choose the label size, and press **Print A4 labels**.
-   - The printed sheet shows the product name on top, the Code 128 barcode in the middle, and the price directly below it.
+   - The printed landscape label shows the product name, the Code 128 barcode, the readable barcode code, and the price — tightly stacked with rounded corners.
 
 ## Files
 
