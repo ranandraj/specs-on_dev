@@ -89,6 +89,13 @@
     saveBlankCodes();
   }
 
+  function releaseBlankCode(code) {
+    var c = normCode(code);
+    if (!/^BC\d{10}$/.test(c)) return;
+    if (blankCodes.indexOf(c) === -1) blankCodes.push(c);
+    saveBlankCodes();
+  }
+
   async function generateBlankCodes(count) {
     count = Number(count);
     if (!Number.isInteger(count) || count < 1 || count > 5000) {
@@ -224,8 +231,9 @@
   function inlineEdit(row, p) {
     var info = row.querySelector('.bc-info');
     var old = info.innerHTML;
-    info.innerHTML = '<input class="bc-input" value="' + esc(p.barcode || suggest(p)) + '" maxlength="32" />' +
-      '<small>Code 128 · letters/numbers</small>';
+    info.innerHTML = '<b>' + esc(p.name) + '</b>' +
+      '<input class="bc-input" value="' + esc(p.barcode || suggest(p)) + '" maxlength="32" />' +
+      '<small>Code 128 · letters/numbers · use Remove barcode to clear</small>';
     var input = info.querySelector('input');
     input.focus(); input.select();
     var done = false;
@@ -243,14 +251,34 @@
     });
     var acts = row.querySelector('.bc-actions');
     var oldActs = acts.innerHTML;
-    acts.innerHTML = '<button type="button" data-act="save">Save</button><button type="button" data-act="cancel" class="bc-alt">Cancel</button>';
+    acts.innerHTML = '<button type="button" data-act="save">Save</button>' +
+      (p.barcode ? '<button type="button" data-act="remove" class="bc-danger">Remove barcode</button>' : '') +
+      '<button type="button" data-act="cancel" class="bc-alt">Cancel</button>';
     acts.onclick = function (e) {
       e.stopPropagation();
       var a = e.target.getAttribute('data-act');
       if (a === 'save') commit(true);
+      if (a === 'remove') removeBarcode(p);
       if (a === 'cancel') commit(false);
     };
     row._restore = function () { info.innerHTML = old; acts.innerHTML = oldActs; acts.onclick = null; };
+  }
+
+  async function removeBarcode(p) {
+    var oldCode = normCode(p.barcode);
+    if (!oldCode) { toast('This product has no barcode to remove', true); return; }
+    if (!confirm('Remove barcode ' + oldCode + ' from ' + p.name + '?')) return;
+    try {
+      await api('?id=eq.' + encodeURIComponent(p.id), {
+        method: 'PATCH', body: JSON.stringify({ barcode: null })
+      });
+      p.barcode = null;
+      releaseBlankCode(oldCode);
+      renderAssign(); renderLabels(); renderGenerated();
+      toast(/^BC\d{10}$/.test(oldCode)
+        ? 'Barcode removed — sticker is available again'
+        : 'Barcode removed');
+    } catch (e) { toast(e.message, true); }
   }
 
   function allLabelCodes() {
@@ -511,6 +539,7 @@
       '.bc-toolbar input[type=search]{flex:1;min-width:200px;padding:9px 11px;border:1px solid #ccc;border-radius:8px;font-size:14px}' +
       '.bc-toolbar button,.bc-actions button{padding:8px 12px;border:1px solid #3b2a1a;background:#3b2a1a;color:#fff;border-radius:8px;cursor:pointer;font-size:12px}' +
       '.bc-toolbar button.bc-alt,.bc-actions button.bc-alt{background:#fff;color:#3b2a1a}' +
+      '.bc-actions button.bc-danger{background:#fff;color:#9d0208;border-color:#9d0208}' +
       '.bc-row{display:flex;align-items:center;gap:12px;padding:9px;border:1px solid #eee;border-radius:10px;margin-bottom:7px}' +
       '.bc-mini-wrap{width:130px;flex:0 0 130px;text-align:center}.bc-mini-wrap svg{max-width:130px;height:42px}' +
       '.bc-none{color:#bbb;font-size:12px}.bc-info{flex:1;min-width:0}.bc-info b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bc-info small{color:#777;font-size:12px}' +

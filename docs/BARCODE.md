@@ -24,7 +24,7 @@ The shopkeeper now prints **blank stickers first** and labels them later by scan
    - A scan from any page is added to the bill; the app returns to the billing panel automatically.
 5. **Assign** tab (optional manual management)
    - Search for a product and press **Generate** to assign an automatic code (`SP000123`).
-   - Press **Edit** to type your own code, or **Generate all missing** for bulk assignment.
+   - Press **Edit** to type your own code, **Remove barcode** to clear it, or **Generate all missing** for bulk assignment. Clearing a generated `BC…` sticker puts it back in the unused sticker list for reuse.
    - A small live Code 128 preview is shown next to each assigned product.
    - The same barcode field is also available in the **Inventory → Add / Edit Products** form.
 
