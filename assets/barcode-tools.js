@@ -30,6 +30,9 @@
   var scanHint = null;
   var inlineMode = false;
   var labelSize = '20x15';
+  var BLANK_KEY = 'specs.blankBarcodes';
+  var blankCodes = [];
+  var selectedCodes = new Set();
   var root, listEl, searchEl, labelListEl, labelPreviewEl, videoEl, scanStatusEl, startBtn, stopBtn;
 
   function esc(s) {
@@ -47,6 +50,80 @@
   function money2(p) {
     var v = p.offer_price != null && p.offer_price !== '' ? p.offer_price : p.price;
     return '₹' + Number(v || 0).toFixed(2);
+  }
+
+  function normCode(c) {
+    return String(c == null ? '' : c).trim().toUpperCase();
+  }
+
+  function randomBlankCode() {
+    var out = 'BC';
+    var i, n;
+    if (window.crypto && window.crypto.getRandomValues) {
+      var vals = new Uint32Array(10);
+      window.crypto.getRandomValues(vals);
+      for (i = 0; i < vals.length; i++) out += String(vals[i] % 10);
+    } else {
+      for (i = 0; i < 10; i++) out += String(Math.floor(Math.random() * 10));
+    }
+    return out;
+  }
+
+  function loadBlankCodes() {
+    try {
+      var rows = JSON.parse(localStorage.getItem(BLANK_KEY) || '[]');
+      blankCodes = Array.isArray(rows) ? rows.map(normCode).filter(function (c) { return /^BC\d{10}$/.test(c); }) : [];
+    } catch (e) { blankCodes = []; }
+  }
+
+  function saveBlankCodes() {
+    try { localStorage.setItem(BLANK_KEY, JSON.stringify(blankCodes)); } catch (e) {}
+  }
+
+  function removeBlankCode(code) {
+    var c = normCode(code);
+    var i = blankCodes.indexOf(c);
+    if (i === -1) return;
+    blankCodes.splice(i, 1);
+    selectedCodes.delete(c);
+    saveBlankCodes();
+  }
+
+  async function generateBlankCodes(count) {
+    count = Number(count);
+    if (!Number.isInteger(count) || count < 1 || count > 5000) {
+      toast('Enter a number from 1 to 5000', true);
+      return;
+    }
+    try {
+      if (!products.length) await loadProducts();
+      var used = new Set();
+      products.forEach(function (p) { if (p.barcode) used.add(normCode(p.barcode)); });
+      blankCodes.forEach(function (c) { used.add(c); });
+      var made = [];
+      while (made.length < count) {
+        var code = randomBlankCode();
+        if (used.has(code)) continue;
+        used.add(code);
+        made.push(code);
+      }
+      blankCodes = blankCodes.concat(made);
+      saveBlankCodes();
+      selectedCodes.clear();
+      renderGenerated(); renderLabels();
+      toast('Generated ' + count + ' blank barcode(s) — no name or code printed');
+      setPane('labels');
+    } catch (e) { toast(e.message, true); }
+  }
+
+  function clearBlankCodes() {
+    if (!blankCodes.length) { toast('No blank barcodes to clear', true); return; }
+    if (!confirm('Clear ' + blankCodes.length + ' unused blank barcode(s)?')) return;
+    blankCodes = [];
+    selectedCodes.clear();
+    saveBlankCodes();
+    renderGenerated(); renderLabels();
+    toast('Blank barcodes cleared');
   }
 
   function suggest(p, used) {
@@ -123,7 +200,6 @@
         '<div class="bc-actions">' +
         '<button type="button" data-act="gen">' + (p.barcode ? 'Regenerate' : 'Generate') + '</button>' +
         '<button type="button" data-act="edit" class="bc-alt">Edit</button>' +
-        '<button type="button" data-act="label" class="bc-alt">Label</button>' +
         '</div></div>';
     }).join('') : '<div class="bc-empty">No matching products.</div>';
     drawBarcodes(listEl);
@@ -177,71 +253,84 @@
     row._restore = function () { info.innerHTML = old; acts.innerHTML = oldActs; acts.onclick = null; };
   }
 
+  function allLabelCodes() {
+    return blankCodes.slice();
+  }
+
+  function chosenCodes() {
+    var codes = allLabelCodes();
+    if (!selectedCodes.size) return codes;
+    return codes.filter(function (c) { return selectedCodes.has(c); });
+  }
+
+  function renderGenerated() {
+    var host = root && root.querySelector('#bc-generated');
+    if (!host) return;
+    var preview = blankCodes.slice(0, 24);
+    host.innerHTML = blankCodes.length
+      ? '<p class="bc-note"><b>' + blankCodes.length + '</b> blank sticker(s) ready. Only the barcode will be printed. Scan a sticker later to label it.</p>' +
+        '<div class="bc-gen-list">' + preview.map(function (code, i) {
+          return '<div class="bc-gen-item"><small>#' + (i + 1) + '</small><svg data-barcode="' + esc(code) + '"></svg><span>' + esc(code) + '</span></div>';
+        }).join('') + '</div>' +
+        (blankCodes.length > preview.length ? '<p class="bc-note">Showing the first ' + preview.length + ' of ' + blankCodes.length + '.</p>' : '')
+      : '<div class="bc-empty">No blank stickers yet. Enter a quantity and press Generate.</div>';
+    drawBarcodes(host);
+  }
+
   function renderLabels() {
-    var assigned = products.filter(function (p) { return p.barcode && p.barcode.trim(); });
-    labelListEl.innerHTML = assigned.length ? assigned.map(function (p) {
-      return '<label class="bc-check"><input type="checkbox" value="' + p.id + '"' + (selected.has(p.id) ? ' checked' : '') + ' /> ' +
-        '<span>' + esc(p.name) + '</span><small>' + esc(p.barcode) + '</small></label>';
-    }).join('') : '<div class="bc-empty">No barcodes assigned yet.</div>';
+    var codes = allLabelCodes();
+    labelListEl.innerHTML = codes.length ? codes.map(function (code, i) {
+      return '<label class="bc-check"><input type="checkbox" value="' + esc(code) + '"' + (selectedCodes.has(code) ? ' checked' : '') + ' /> ' +
+        '<span>Sticker ' + (i + 1) + '</span><small>' + esc(code) + '</small></label>';
+    }).join('') : '<div class="bc-empty">No blank stickers yet. Generate them first.</div>';
     drawLabels();
+    renderGenerated();
   }
 
-  function chosenProducts() {
-    if (selected.size) return products.filter(function (p) { return selected.has(p.id) && p.barcode; });
-    return products.filter(function (p) { return p.barcode && p.barcode.trim(); });
-  }
-
-  function labelMarkup(p) {
-    return '<div class="bc-label" data-code="' + esc(p.barcode) + '">' +
-      '<div class="bc-lname">' + esc(p.name) + '</div>' +
-      '<svg class="bc-lbar" data-barcode="' + esc(p.barcode) + '"></svg>' +
-      '<div class="bc-lcode">' + esc(p.barcode) + '</div>' +
-      '<div class="bc-lprice">' + money2(p) + '</div>' +
+  function labelMarkup(code) {
+    return '<div class="bc-label" data-code="' + esc(code) + '">' +
+      '<svg class="bc-lbar" data-barcode="' + esc(code) + '"></svg>' +
       '</div>';
   }
 
   function drawLabels() {
+    var all = chosenCodes();
+    var shown = all.slice(0, 80);
     labelPreviewEl.className = 'bc-labels size-' + labelSize.replace('x', '-');
-    labelPreviewEl.innerHTML = chosenProducts().map(labelMarkup).join('') ||
-      '<div class="bc-empty">Select products on the left.</div>';
+    labelPreviewEl.innerHTML = shown.map(labelMarkup).join('') +
+      (all.length > shown.length ? '<div class="bc-preview-note">Preview shows ' + shown.length + ' of ' + all.length + '. Print includes all.</div>' : '') ||
+      '<div class="bc-empty">Generate blank stickers first.</div>';
     drawBarcodes(labelPreviewEl);
   }
 
   function printLabels() {
-    var list = chosenProducts();
-    if (!list.length) { toast('Select at least one product', true); return; }
-    labelPreviewEl.querySelectorAll('svg[data-barcode]').forEach(drawOne);
-    function drawOne(svg) {
-      if (svg.getAttribute('data-drawn') === '1') return;
-      try {
-        JsBarcode(svg, svg.getAttribute('data-barcode'), {
-          format: 'CODE128', displayValue: false, width: 2, height: 42, margin: 0
-        });
-        svg.setAttribute('data-drawn', '1');
-      } catch (e) {}
-    }
+    var list = chosenCodes();
+    if (!list.length) { toast('Generate at least one blank barcode first', true); return; }
+    if (!window.JsBarcode) { toast('Barcode renderer is not loaded', true); return; }
+    var holder = document.createElement('div');
+    holder.style.cssText = 'position:absolute;left:-99999px;top:0;width:0;height:0;overflow:hidden';
+    holder.innerHTML = list.map(function (code) {
+      return '<svg class="bc-lbar" data-barcode="' + esc(code) + '"></svg>';
+    }).join('');
+    document.body.appendChild(holder);
+    drawBarcodes(holder);
+    var svgs = Array.prototype.map.call(holder.querySelectorAll('svg'), function (svg) { return svg.outerHTML; });
+    document.body.removeChild(holder);
     var w = labelSize === '20x15' ? '20mm' : '15mm';
     var h = labelSize === '20x15' ? '15mm' : '20mm';
     var cols = labelSize === '20x15' ? 10 : 13;
-    var html = '<!doctype html><html><head><meta charset="utf-8"><title>Barcode labels</title><style>' +
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>Blank barcode stickers</title><style>' +
       '@page{size:A4;margin:5mm}body{margin:0;font-family:Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
       '.sheet{display:grid;grid-template-columns:repeat(' + cols + ',' + w + ');grid-auto-rows:' + h + ';gap:0}' +
-      '.bc-label{width:' + w + ';height:' + h + ';box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;overflow:hidden;text-align:center;padding:0.1mm 0.4mm;border:0.2mm dotted #bbb;border-radius:1.2mm}' +
-      '.bc-lname{font-size:5.2pt;line-height:0.95;margin:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 0.4mm}' +
-      '.bc-lbar{width:17mm;height:7mm;display:block;margin:0}' +
-      '.bc-lcode{font:600 3.4pt/0.95 monospace;margin:0;letter-spacing:0.1mm}' +
-      '.bc-lprice{font-size:7pt;font-weight:bold;line-height:0.95;margin:0}' +
-      '.size-15-20 .bc-lbar{width:13mm;height:9.5mm}' +
+      '.bc-label{width:' + w + ';height:' + h + ';box-sizing:border-box;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:0.2mm;border:0.2mm dotted #bbb;border-radius:1.2mm}' +
+      '.bc-lbar{width:18mm;height:10mm;display:block;margin:0}' +
+      '.size-15-20 .bc-lbar{width:13mm;height:15mm}' +
       '</style></head><body><div class="sheet size-' + labelSize.replace('x', '-') + '">' +
-      list.map(function (p) {
-        var svg = labelPreviewEl.querySelector('svg[data-barcode="' + CSS.escape(p.barcode) + '"]');
-        return '<div class="bc-label"><div class="bc-lname">' + esc(p.name) + '</div>' +
-          (svg ? svg.outerHTML : '<svg class="bc-lbar"></svg>') +
-          '<div class="bc-lcode">' + esc(p.barcode) + '</div>' +
-          '<div class="bc-lprice">' + money2(p) + '</div></div>';
+      list.map(function (code, i) {
+        return '<div class="bc-label" data-code="' + esc(code) + '">' + (svgs[i] || '<svg class="bc-lbar"></svg>') + '</div>';
       }).join('') + '</div><script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script></body></html>';
     var win = window.open('', '_blank', 'width=900,height=700');
-    if (!win) { toast('Allow pop-ups to print labels', true); return; }
+    if (!win) { toast('Allow pop-ups to print blank stickers', true); return; }
     win.document.open(); win.document.write(html); win.document.close();
   }
 
@@ -292,7 +381,7 @@
     var name = root.querySelector('#bc-unknown-name').value.trim() || lastScanned;
     var price = Number(root.querySelector('#bc-unknown-price').value) || 0;
     if (price < 0) { toast('Price cannot be negative', true); return; }
-    if (mode !== 'manual' && !(price > 0)) { toast('Enter a price greater than 0 to save this item', true); return; }
+    if (mode === 'new' && !(price > 0)) { toast('Enter a price greater than 0 to save a new product', true); return; }
     try {
       if (mode === 'manual') {
         deliver({ id: 'barcode-' + lastScanned, name: name, price: price, offer_price: null, barcode: lastScanned });
@@ -306,6 +395,7 @@
         });
         var created = Array.isArray(rows) ? rows[0] : rows;
         products.push(created);
+        removeBlankCode(lastScanned);
         deliver(created);
         renderAssign(); renderLabels();
       } else if (mode === 'assign') {
@@ -313,6 +403,7 @@
         if (!id) { toast('Choose a product', true); return; }
         await saveBarcode(id, lastScanned);
         var prod = products.find(function (p) { return p.id === id; });
+        removeBlankCode(lastScanned);
         deliver(prod);
         renderAssign(); renderLabels();
       }
@@ -435,45 +526,54 @@
       '.bc-toolbar input:not([type=search]){padding:9px 11px;border:1px solid #ccc;border-radius:8px;font-size:14px}' +
       '#bc-assign-area{display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap}' +
       '#bc-assign-product{padding:9px;border:1px solid #ccc;border-radius:8px;max-width:320px}' +
+      '.bc-note{font-size:12px;color:#666;line-height:1.5;margin:6px 0}' +
+      '.bc-gen-list{display:flex;flex-wrap:wrap;gap:8px;max-height:180px;overflow:auto}' +
+      '.bc-gen-item{width:150px;border:1px solid #eee;border-radius:8px;padding:6px;text-align:center;font-size:10px;color:#555}' +
+      '.bc-gen-item svg{display:block;width:130px;height:32px;margin:2px auto}.bc-gen-item span{display:block;font-family:monospace;word-break:break-all}' +
       '.bc-labelgrid{display:grid;grid-template-columns:260px 1fr;gap:16px}' +
       '.bc-checks{max-height:420px;overflow:auto;border:1px solid #eee;border-radius:10px;padding:8px}' +
       '.bc-check{display:flex;gap:6px;align-items:center;padding:4px 2px;font-size:13px;cursor:pointer}.bc-check span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bc-check small{color:#888;font-size:10px}' +
       '.bc-labels{display:flex;flex-wrap:wrap;gap:2mm;background:#f3f3f3;padding:8px;border-radius:10px;max-height:430px;overflow:auto}' +
-      '.bc-label{width:20mm;height:15mm;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;overflow:hidden;text-align:center;padding:0.1mm 0.4mm;border:1px solid #ddd;border-radius:1.2mm;box-sizing:border-box}' +
+      '.bc-label{width:20mm;height:15mm;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:0.2mm;border:1px solid #ddd;border-radius:1.2mm;box-sizing:border-box}' +
       '.bc-labels.size-15-20 .bc-label{width:15mm;height:20mm}' +
-      '.bc-lname{font-size:5.2pt;line-height:0.95;margin:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
-      '.bc-lbar{width:17mm;height:7mm;display:block;margin:0}.bc-labels.size-15-20 .bc-lbar{width:13mm;height:9.5mm}' +
-      '.bc-lcode{font:600 3.4pt/0.95 monospace;margin:0;letter-spacing:0.1mm}' +
-      '.bc-lprice{font-size:7pt;font-weight:bold;line-height:0.95;margin:0}' +
+      '.bc-lbar{width:18mm;height:10mm;display:block;margin:0}.bc-labels.size-15-20 .bc-lbar{width:13mm;height:15mm}' +
+      '.bc-preview-note{width:100%;font-size:11px;color:#777;padding:6px;text-align:center}' +
       '#bc-toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);background:#1b4332;color:#fff;padding:10px 18px;border-radius:999px;z-index:10000;font:13px Arial,sans-serif;opacity:0;pointer-events:none;transition:.22s;box-shadow:0 8px 24px #0004;max-width:90vw;text-align:center}' +
       '#bc-toast.show{opacity:1;transform:translate(-50%,0)}#bc-toast.bad{background:#9d0208}' +
       '@media(max-width:700px){.bc-labelgrid{grid-template-columns:1fr}.bc-mini-wrap{display:none}}' +
       '</style>' +
       '<div id="bc-modal"><div class="bc-box">' +
       '<div class="bc-head"><h2>🏷️ Barcode Tools</h2><button type="button" id="bc-close" style="border:0;background:none;font-size:22px;cursor:pointer">×</button></div>' +
-      '<div class="bc-tabs"><button type="button" data-tab="assign" class="active">Assign</button><button type="button" data-tab="scan">Scan</button><button type="button" data-tab="labels">Labels</button></div>' +
-      '<div class="bc-pane active" id="bc-pane-assign"><div class="bc-toolbar">' +
+      '<div class="bc-tabs"><button type="button" data-tab="generate" class="active">Generate</button><button type="button" data-tab="assign">Assign</button><button type="button" data-tab="scan">Scan</button><button type="button" data-tab="labels">Labels</button></div>' +
+      '<div class="bc-pane active" id="bc-pane-generate"><div class="bc-toolbar">' +
+      '<label for="bc-qty" style="font-size:13px;font-weight:600">How many stickers?</label>' +
+      '<input id="bc-qty" type="number" min="1" max="5000" value="100" style="width:100px" />' +
+      '<button type="button" id="bc-generate">Generate random barcodes</button>' +
+      '<button type="button" id="bc-clear" class="bc-alt">Clear unused</button></div>' +
+      '<p class="bc-note">Creates blank Code 128 stickers with no product name and no code printed. Scan a sticker later to label it.</p>' +
+      '<div id="bc-generated"></div></div>' +
+      '<div class="bc-pane" id="bc-pane-assign"><div class="bc-toolbar">' +
       '<input id="bc-search" type="search" placeholder="Search product, ID or barcode" />' +
       '<button type="button" id="bc-genall">Generate all missing</button>' +
       '<button type="button" id="bc-refresh" class="bc-alt">Refresh</button></div><div id="bc-list"></div></div>' +
       '<div class="bc-pane" id="bc-pane-scan"><div class="bc-scanwrap">' +
       '<video id="bc-video" playsinline muted></video><div class="bc-scaninfo">' +
-      '<h3>Scan with device camera</h3><p>The camera reads Code 128, EAN/UPC and other common barcodes. Known codes add the item instantly; unknown codes can still be billed or attached to a product.</p>' +
+      '<h3>Scan with device camera</h3><p>The camera reads Code 128, EAN/UPC and other common barcodes. Known codes add the item instantly. Blank stickers you generated are labelled here: choose the product and the item goes straight into the bill.</p>' +
       '<div class="bc-toolbar"><button type="button" id="bc-start">Start camera</button><button type="button" id="bc-stop" class="bc-alt" disabled>Stop</button></div>' +
       '<div class="bc-toolbar" style="margin-top:6px"><input id="bc-manual-code" placeholder="Or type / paste barcode here" /><button type="button" id="bc-manual-use">Use code</button></div>' +
       '<p id="bc-scanstatus">Camera off.</p></div></div></div>' +
       '<div class="bc-pane" id="bc-pane-unknown"><div class="bc-unknown">' +
-      '<h3>Barcode not found in catalog</h3>' +
-      '<p class="bc-unknown-note">This code can still be billed. Enter a name and price, save it as a new product, or attach it to an existing one.</p>' +
+      '<h3>Sticker not labelled yet</h3>' +
+      '<p class="bc-unknown-note">Scan the blank sticker once, then choose the product it belongs to. It will be added to the bill immediately. You can also bill it without saving a product.</p>' +
       '<p class="bc-scanned">Scanned: <b id="bc-unknown-code"></b></p>' +
-      '<div class="bc-toolbar"><input id="bc-unknown-name" placeholder="Item name" /><input id="bc-unknown-price" type="number" min="0" step="0.01" placeholder="Price ₹" /></div>' +
+      '<div class="bc-toolbar"><input id="bc-unknown-name" placeholder="Item name (new product only)" /><input id="bc-unknown-price" type="number" min="0" step="0.01" placeholder="Price ₹ (new product only)" /></div>' +
       '<div class="bc-toolbar"><button type="button" id="bc-add-manual">Add to cart only</button><button type="button" id="bc-save-product">Save as product & add</button><button type="button" id="bc-assign-existing" class="bc-alt">Assign to existing product</button><button type="button" id="bc-unknown-cancel" class="bc-alt">Back to scan</button></div>' +
       '<div id="bc-assign-area" style="display:none"><select id="bc-assign-product"></select><button type="button" id="bc-assign-confirm">Assign & add</button></div>' +
       '</div></div>' +
       '<div class="bc-pane" id="bc-pane-labels"><div class="bc-toolbar">' +
       '<select id="bc-size"><option value="20x15" selected>20 × 15 mm (landscape)</option><option value="15x20">15 × 20 mm</option></select>' +
-      '<button type="button" id="bc-selall">Select all</button><button type="button" id="bc-print">Print A4 labels</button>' +
-      '<span style="font-size:12px;color:#777">Price is printed below every barcode</span></div>' +
+      '<button type="button" id="bc-selall">Select all</button><button type="button" id="bc-print">Print A4 stickers</button>' +
+      '<span class="bc-note">Only the barcode is printed — no name, code or price. Scan a sticker to label it.</span></div>' +
       '<div class="bc-labelgrid"><div class="bc-checks" id="bc-label-list"></div><div class="bc-labels" id="bc-label-preview"></div></div></div>' +
       '</div></div>';
     document.body.appendChild(root);
@@ -495,10 +595,18 @@
         b.classList.add('active');
         root.querySelector('#bc-pane-' + b.getAttribute('data-tab')).classList.add('active');
         if (b.getAttribute('data-tab') === 'labels') drawLabels();
+        if (b.getAttribute('data-tab') === 'generate') renderGenerated();
         if (b.getAttribute('data-tab') === 'scan' && scanning) scanStatusEl.textContent = 'Camera on — point at a barcode.';
       };
     });
     searchEl.oninput = renderAssign;
+    root.querySelector('#bc-generate').onclick = function () {
+      generateBlankCodes(root.querySelector('#bc-qty').value);
+    };
+    root.querySelector('#bc-qty').onkeydown = function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); root.querySelector('#bc-generate').click(); }
+    };
+    root.querySelector('#bc-clear').onclick = clearBlankCodes;
     root.querySelector('#bc-refresh').onclick = async function () { await loadProducts(); renderAssign(); renderLabels(); toast('Products refreshed'); };
     root.querySelector('#bc-genall').onclick = generateMissing;
     startBtn.onclick = startScan;
@@ -518,9 +626,9 @@
     root.querySelector('#bc-assign-confirm').onclick = function () { finishUnknown('assign'); };
     root.querySelector('#bc-unknown-cancel').onclick = async function () { setPane('scan'); if (!scanning) await startScan(); };
     root.querySelector('#bc-selall').onclick = function () {
-      var assigned = products.filter(function (p) { return p.barcode; });
-      if (selected.size === assigned.length) selected.clear();
-      else assigned.forEach(function (p) { selected.add(p.id); });
+      var codes = allLabelCodes();
+      if (selectedCodes.size === codes.length) selectedCodes.clear();
+      else codes.forEach(function (c) { selectedCodes.add(c); });
       renderLabels();
     };
     root.querySelector('#bc-size').onchange = function (e) { labelSize = e.target.value; drawLabels(); };
@@ -539,15 +647,11 @@
           renderAssign(); renderLabels(); toast('Barcode saved');
         }).catch(function (err) { toast(err.message, true); });
       } else if (act === 'edit') inlineEdit(row, p);
-      else if (act === 'label') {
-        selected.add(p.id); renderLabels();
-        root.querySelector('.bc-tabs button[data-tab="labels"]').click();
-      }
     };
     labelListEl.onchange = function (e) {
       if (e.target.type !== 'checkbox') return;
-      var id = Number(e.target.value);
-      if (e.target.checked) selected.add(id); else selected.delete(id);
+      var code = normCode(e.target.value);
+      if (e.target.checked) selectedCodes.add(code); else selectedCodes.delete(code);
       drawLabels();
     };
 
@@ -558,7 +662,7 @@
     root.querySelector('#bc-modal').classList.add('open');
     try {
       await loadProducts();
-      renderAssign(); renderLabels();
+      renderAssign(); renderLabels(); renderGenerated();
     } catch (e) { toast('Could not load products: ' + e.message, true); }
   }
 
@@ -580,6 +684,7 @@
     root.classList.add('bc-inline');
     if (root.parentNode !== host) host.appendChild(root);
     root.querySelector('#bc-modal').classList.add('open');
+    renderGenerated();
     if (!products.length) {
       loadProducts().then(function () { renderAssign(); renderLabels(); }).catch(function () {});
     }
@@ -595,6 +700,7 @@
   }
 
   function boot() {
+    loadBlankCodes();
     buildUI();
     var pending = sessionStorage.getItem('specs.pendingBarcodeProduct');
     if (pending && /^\/pos(\/|$)/.test(location.pathname)) {
