@@ -29,6 +29,7 @@
   var nativeTimer = null;
   var scanHint = null;
   var inlineMode = false;
+  var scanMode = 'billing';
   var labelSize = '20x15';
   var BLANK_KEY = 'specs.blankBarcodes';
   var blankCodes = [];
@@ -413,70 +414,94 @@
     if (pane) pane.classList.add('active');
   }
 
+  function scanOnText() {
+    return scanMode === 'assign'
+      ? 'Assign scan on — only unlabelled barcodes are accepted.'
+      : 'Billing scan on — labelled barcodes add to the bill.';
+  }
+
+  function clearScanError() {
+    var el = root && root.querySelector('#bc-scanerror');
+    if (el) { el.textContent = ''; el.style.display = 'none'; }
+  }
+
+  function showScanError(msg) {
+    var el = root && root.querySelector('#bc-scanerror');
+    if (el) { el.textContent = msg; el.style.display = 'block'; }
+    toast(msg, true);
+  }
+
+  function setScanMode(mode) {
+    scanMode = mode === 'assign' ? 'assign' : 'billing';
+    var billBtn = root && root.querySelector('#bc-mode-billing');
+    var assignBtn = root && root.querySelector('#bc-mode-assign');
+    if (billBtn) {
+      billBtn.classList.toggle('active', scanMode === 'billing');
+      billBtn.classList.toggle('bc-alt', scanMode !== 'billing');
+    }
+    if (assignBtn) {
+      assignBtn.classList.toggle('active', scanMode === 'assign');
+      assignBtn.classList.toggle('bc-alt', scanMode !== 'assign');
+    }
+    var desc = root && root.querySelector('#bc-scan-desc');
+    if (desc) desc.textContent = scanMode === 'billing'
+      ? 'Billing mode: only labelled barcodes are added to the bill. Unlabelled barcodes show an error.'
+      : 'Assigning mode: only unlabelled barcodes are accepted. Labelled barcodes show an error.';
+    clearScanError();
+    if (scanStatusEl && !scanning) scanStatusEl.textContent = 'Camera off.';
+  }
+
   function showUnknown(code) {
     lastScanned = String(code || '').trim();
     root.querySelector('#bc-unknown-code').textContent = lastScanned;
-    root.querySelector('#bc-unknown-name').value = lastScanned;
-    root.querySelector('#bc-unknown-price').value = '';
     showAssignArea();
     setPane('unknown');
   }
 
   function showAssignArea() {
-    root.querySelector('#bc-unknown-manual').style.display = 'none';
     root.querySelector('#bc-assign-area').style.display = 'block';
     renderUnassigned();
   }
 
-  function showManualArea() {
-    root.querySelector('#bc-assign-area').style.display = 'none';
-    root.querySelector('#bc-unknown-manual').style.display = 'block';
-  }
-
-  async function finishUnknown(mode) {
-    var name = root.querySelector('#bc-unknown-name').value.trim() || lastScanned;
-    var price = Number(root.querySelector('#bc-unknown-price').value) || 0;
-    if (price < 0) { toast('Price cannot be negative', true); return; }
-    if (mode === 'new' && !(price > 0)) { toast('Enter a price greater than 0 to save a new product', true); return; }
+  async function assignLabel() {
+    var id = Number(root.querySelector('#bc-assign-product').value);
+    var prod = products.find(function (p) { return p.id === id; });
+    if (!prod) { toast('Choose a product', true); return; }
+    if (hasBarcode(prod)) { toast(prod.name + ' already has a barcode', true); return; }
     try {
-      if (mode === 'manual') {
-        deliver({ id: 'barcode-' + lastScanned, name: name, price: price, offer_price: null, barcode: lastScanned });
-      } else if (mode === 'new') {
-        var rows = await api('', {
-          method: 'POST',
-          body: JSON.stringify({
-            name: name, category: 'Uncategorized', price: price, barcode: lastScanned,
-            is_active: true, unit: '1pc', base_quantity: 1, unit_type: 'unit', unit_label: 'pc'
-          })
-        });
-        var created = Array.isArray(rows) ? rows[0] : rows;
-        products.push(created);
-        removeBlankCode(lastScanned);
-        deliver(created);
-        renderAssign(); renderLabels();
-      } else if (mode === 'assign') {
-        var id = Number(root.querySelector('#bc-assign-product').value);
-        var prod = products.find(function (p) { return p.id === id; });
-        if (!prod) { toast('Choose a product', true); return; }
-        if (hasBarcode(prod)) { toast(prod.name + ' already has a barcode', true); return; }
-        await saveBarcode(id, lastScanned);
-        removeBlankCode(lastScanned);
-        deliver(prod);
-        renderAssign(); renderLabels(); renderUnassigned();
-      }
+      await saveBarcode(id, lastScanned);
+      removeBlankCode(lastScanned);
+      renderAssign(); renderLabels(); renderUnassigned();
+      toast('Label saved for ' + prod.name + ' — scan it again in billing mode to add it');
       setPane('scan');
       if (!scanning) await startScan();
+      else scanStatusEl.textContent = scanOnText();
     } catch (e) { toast(e.message, true); }
   }
 
   function handleScan(text) {
     var code = String(text || '').trim();
     var p = products.find(function (x) { return x.barcode && x.barcode.trim().toUpperCase() === code.toUpperCase(); });
-    if (!p) { showUnknown(code); return; }
-    sessionStorage.setItem('specs.pendingBarcodeProduct', JSON.stringify(p));
+    clearScanError();
+    if (scanMode === 'billing') {
+      if (!p) {
+        stopScan();
+        showScanError('Non-labeled barcode. Use Scan for assigning to label it first.');
+        return;
+      }
+      sessionStorage.setItem('specs.pendingBarcodeProduct', JSON.stringify(p));
+      stopScan();
+      if (/^\/pos(\/|$)/.test(location.pathname)) deliver(p);
+      else { toast('Adding ' + p.name + ' to bill…'); location.href = '/?specsView=pos'; }
+      return;
+    }
+    if (p) {
+      stopScan();
+      showScanError('Barcode already labeled: ' + p.name + '. Use Scan for billing to add it.');
+      return;
+    }
     stopScan();
-    if (/^\/pos(\/|$)/.test(location.pathname)) deliver(p);
-    else { toast('Opening billing panel…'); location.href = '/?specsView=pos'; }
+    showUnknown(code);
   }
 
   async function startScan() {
@@ -520,7 +545,7 @@
             nativeTimer = null;
             try { stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
           }};
-          scanStatusEl.textContent = 'Camera on (fast scanner) — point at a barcode.';
+          scanStatusEl.textContent = scanOnText();
         } catch (e) { /* fall back to ZXing */ }
       }
       if (!usedNative) {
@@ -531,7 +556,7 @@
           if (result) handleScan(result.getText());
         });
         scanning = true;
-        scanStatusEl.textContent = 'Camera on — point at a barcode.';
+        scanStatusEl.textContent = scanOnText();
       }
       if (scanHint) clearTimeout(scanHint);
       scanHint = setTimeout(function () {
@@ -578,6 +603,8 @@
       '.bc-empty{padding:18px;color:#888;text-align:center;font-size:13px}' +
       '.bc-scanwrap{display:flex;gap:18px;flex-wrap:wrap}.bc-scanwrap video{width:340px;max-width:100%;height:230px;background:#111;border-radius:10px;object-fit:cover}.bc-scaninfo{flex:1;min-width:220px}' +
       '.bc-scaninfo p{font-size:13px;color:#555;line-height:1.5}' +
+      '.bc-mode.active{background:#1b4332;color:#fff;border-color:#1b4332}' +
+      '.bc-error{margin-top:8px;padding:9px 11px;border-radius:8px;background:#fff0f0;color:#9d0208;font-size:13px;font-weight:700;border:1px solid #ffc9c9}' +
       '.bc-unknown{background:#fff8ed;border:1px solid #f0d9b5;border-radius:12px;padding:16px}' +
       '.bc-unknown h3{margin:0 0 8px;color:#8a4b08;font-size:17px}' +
       '.bc-unknown-note{font-size:13px;color:#665;line-height:1.5}' +
@@ -617,23 +644,19 @@
       '<button type="button" id="bc-refresh" class="bc-alt">Refresh</button></div><div id="bc-list"></div></div>' +
       '<div class="bc-pane" id="bc-pane-scan"><div class="bc-scanwrap">' +
       '<video id="bc-video" playsinline muted></video><div class="bc-scaninfo">' +
-      '<h3>Scan with device camera</h3><p>The camera reads Code 128, EAN/UPC and other common barcodes. Known codes add the item instantly. Blank stickers you generated are labelled here: choose the product and the item goes straight into the bill.</p>' +
+      '<h3>Scan with device camera</h3><p id="bc-scan-desc">Billing mode: only labelled barcodes are added to the bill. Unlabelled barcodes show an error.</p>' +
+      '<div class="bc-toolbar"><button type="button" id="bc-mode-billing" class="bc-mode active">Scan for billing</button><button type="button" id="bc-mode-assign" class="bc-mode bc-alt">Scan for assigning</button></div>' +
       '<div class="bc-toolbar"><button type="button" id="bc-start">Start camera</button><button type="button" id="bc-stop" class="bc-alt" disabled>Stop</button></div>' +
       '<div class="bc-toolbar" style="margin-top:6px"><input id="bc-manual-code" placeholder="Or type / paste barcode here" /><button type="button" id="bc-manual-use">Use code</button></div>' +
-      '<p id="bc-scanstatus">Camera off.</p></div></div></div>' +
+      '<p id="bc-scanstatus">Camera off.</p><p id="bc-scanerror" class="bc-error" style="display:none"></p></div></div></div>' +
       '<div class="bc-pane" id="bc-pane-unknown"><div class="bc-unknown">' +
-      '<h3>Sticker not labelled yet</h3>' +
-      '<p class="bc-unknown-note">Choose the inventory product this sticker belongs to. Only products without a barcode are shown, and the saved inventory price is used automatically.</p>' +
+      '<h3>Label this barcode</h3>' +
+      '<p class="bc-unknown-note">This barcode is not labelled yet. Choose the inventory product it belongs to and press Assign label. Its saved inventory price will be used when you scan it in billing mode.</p>' +
       '<p class="bc-scanned">Scanned: <b id="bc-unknown-code"></b></p>' +
       '<div id="bc-assign-area">' +
-      '<div class="bc-toolbar"><select id="bc-assign-product"></select><button type="button" id="bc-assign-confirm">Assign & add</button><button type="button" id="bc-show-manual" class="bc-alt">Bill without assigning</button><button type="button" id="bc-unknown-cancel" class="bc-alt">Back to scan</button></div>' +
+      '<div class="bc-toolbar"><select id="bc-assign-product"></select><button type="button" id="bc-assign-confirm">Assign label</button><button type="button" id="bc-unknown-cancel" class="bc-alt">Back to scan</button></div>' +
       '<p id="bc-assign-price" class="bc-note"></p>' +
-      '<p id="bc-unassigned-empty" class="bc-empty" style="display:none">Every inventory product already has a barcode. Add a new product first, or bill without assigning.</p>' +
-      '</div>' +
-      '<div id="bc-unknown-manual" style="display:none">' +
-      '<p class="bc-unknown-note">Bill this code without assigning it to inventory. Enter a name and price below.</p>' +
-      '<div class="bc-toolbar"><input id="bc-unknown-name" placeholder="Item name (new product only)" /><input id="bc-unknown-price" type="number" min="0" step="0.01" placeholder="Price ₹ (new product only)" /></div>' +
-      '<div class="bc-toolbar"><button type="button" id="bc-add-manual">Add to cart only</button><button type="button" id="bc-save-product">Save as product & add</button><button type="button" id="bc-assign-existing" class="bc-alt">Choose from inventory</button></div>' +
+      '<p id="bc-unassigned-empty" class="bc-empty" style="display:none">Every inventory product already has a barcode. Add the product to Inventory first, then scan this sticker again.</p>' +
       '</div>' +
       '</div></div>' +
       '<div class="bc-pane" id="bc-pane-labels"><div class="bc-toolbar">' +
@@ -662,7 +685,7 @@
         root.querySelector('#bc-pane-' + b.getAttribute('data-tab')).classList.add('active');
         if (b.getAttribute('data-tab') === 'labels') drawLabels();
         if (b.getAttribute('data-tab') === 'generate') renderGenerated();
-        if (b.getAttribute('data-tab') === 'scan' && scanning) scanStatusEl.textContent = 'Camera on — point at a barcode.';
+        if (b.getAttribute('data-tab') === 'scan' && scanning) scanStatusEl.textContent = scanOnText();
       };
     });
     searchEl.oninput = renderAssign;
@@ -686,12 +709,10 @@
     root.querySelector('#bc-manual-code').onkeydown = function (e) {
       if (e.key === 'Enter') { e.preventDefault(); useManual(); }
     };
-    root.querySelector('#bc-add-manual').onclick = function () { finishUnknown('manual'); };
-    root.querySelector('#bc-save-product').onclick = function () { finishUnknown('new'); };
-    root.querySelector('#bc-assign-existing').onclick = showAssignArea;
-    root.querySelector('#bc-show-manual').onclick = showManualArea;
+    root.querySelector('#bc-mode-billing').onclick = function () { setScanMode('billing'); };
+    root.querySelector('#bc-mode-assign').onclick = function () { setScanMode('assign'); };
     root.querySelector('#bc-assign-product').onchange = updateAssignedPrice;
-    root.querySelector('#bc-assign-confirm').onclick = function () { finishUnknown('assign'); };
+    root.querySelector('#bc-assign-confirm').onclick = assignLabel;
     root.querySelector('#bc-unknown-cancel').onclick = async function () { setPane('scan'); if (!scanning) await startScan(); };
     root.querySelector('#bc-selall').onclick = function () {
       var codes = allLabelCodes();
@@ -734,8 +755,9 @@
     } catch (e) { toast('Could not load products: ' + e.message, true); }
   }
 
-  async function scanNow() {
+  async function scanNow(mode) {
     await open();
+    setScanMode(mode);
     setPane('scan');
     if (!scanning) await startScan();
   }
@@ -780,5 +802,13 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 
-  window.SpecsBarcode = { refresh: loadProducts, open: open, scan: scanNow, handleCode: handleScan, mountInline: mountInline, unmountInline: unmountInline };
+  window.SpecsBarcode = {
+    refresh: loadProducts, open: open,
+    scan: function () { return scanNow('billing'); },
+    scanBilling: function () { return scanNow('billing'); },
+    scanAssign: function () { return scanNow('assign'); },
+    setScanMode: setScanMode,
+    handleCode: handleScan,
+    mountInline: mountInline, unmountInline: unmountInline
+  };
 })();

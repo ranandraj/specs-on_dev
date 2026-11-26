@@ -16,12 +16,11 @@ The shopkeeper now prints **blank stickers first** and labels them later by scan
    - Printed stickers contain **only the barcode** — no product name, no `SP000…` code, no price, and no other text.
    - Print includes every selected sticker; the on-screen preview shows only the first 80 to stay fast.
 4. **Scan** tab / billing button
-   - On the billing screen, use **SCAN BARCODE** for the camera, or **BARCODE TOOLS** (next to **SEARCH CATALOG**) to switch the sidebar to Barcode Tools. On standalone `/pos`, it opens the tools popup.
-   - Allow camera access and point the device camera at a sticker. Code 128, EAN/UPC and other common formats are supported.
-   - A blank sticker you generated shows **Sticker not labelled yet**. The picker lists only inventory products that still have **no barcode**, each with its saved price. Choose the product and press **Assign & add** — the item goes straight into the bill using that saved price, and the code is saved to `products.barcode`. No price is asked for in this path.
-   - If the sticker is not for an existing inventory item, choose **Bill without assigning** to **Add to cart only** (bill without saving a product) or **Save as product & add** (create a new inventory item with that barcode).
-   - If the camera cannot read a code, type or paste it into **Or type / paste barcode here** and press **Use code**.
-   - A scan from any page is added to the bill; the app returns to the billing panel automatically.
+   - On the billing screen, use **SCAN BARCODE** for the camera. It opens in **Scan for billing** mode. **BARCODE TOOLS** (next to **SEARCH CATALOG**) also opens the tools.
+   - Allow camera access and point the device camera at a sticker. Code 128, EAN/UPC and other common formats are supported. If the camera cannot read a code, type or paste it into **Or type / paste barcode here** and press **Use code**.
+   - **Scan for billing**: only barcodes already labelled in inventory are added to the bill. An unlabelled barcode is rejected with **Non-labeled barcode. Use Scan for assigning to label it first.** Nothing is added.
+   - **Scan for assigning**: only unlabelled barcodes are accepted. A labelled barcode is rejected with **Barcode already labeled. Use Scan for billing to add it.** Nothing is added.
+   - When an unlabelled barcode is scanned in assigning mode, the picker lists only inventory products that still have **no barcode**, each with its saved price. Choose the product and press **Assign label**. The barcode is saved to `products.barcode`; no price is asked and no item is added to the bill. Scan the same barcode again in **Scan for billing** mode and the product is recognised and added at its saved price.
 5. **Assign** tab (optional manual management)
    - Search for a product and press **Generate** to assign an automatic code (`SP000123`).
    - Press **Edit** to type your own code, **Remove barcode** to clear it, or **Generate all missing** for bulk assignment. Clearing a generated `BC…` sticker puts it back in the unused sticker list for reuse.
