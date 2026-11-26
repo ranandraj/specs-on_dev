@@ -276,6 +276,7 @@ BEGIN
 
   UPDATE public.advance_orders a
   SET status = 'completed',
+      remaining_balance = 0,
       completed_at = v_completed_at,
       completed_order_id = v_order_id,
       invoice_number = v_invoice,
