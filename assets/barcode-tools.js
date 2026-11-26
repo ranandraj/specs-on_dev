@@ -212,6 +212,32 @@
     drawBarcodes(listEl);
   }
 
+  function hasBarcode(p) {
+    return !!(p && p.barcode && String(p.barcode).trim());
+  }
+
+  function renderUnassigned() {
+    var select = root && root.querySelector('#bc-assign-product');
+    if (!select) return;
+    var free = products.filter(function (p) { return !hasBarcode(p); });
+    select.innerHTML = free.map(function (p) {
+      return '<option value="' + p.id + '">' + esc(p.name) + ' — ' + money2(p) + '</option>';
+    }).join('');
+    var empty = root.querySelector('#bc-unassigned-empty');
+    if (empty) empty.style.display = free.length ? 'none' : 'block';
+    var confirm = root.querySelector('#bc-assign-confirm');
+    if (confirm) confirm.disabled = !free.length;
+    updateAssignedPrice();
+  }
+
+  function updateAssignedPrice() {
+    var note = root && root.querySelector('#bc-assign-price');
+    if (!note) return;
+    var select = root.querySelector('#bc-assign-product');
+    var p = select && products.find(function (x) { return String(x.id) === select.value; });
+    note.textContent = p ? 'Saved inventory price: ' + money2(p) + '. No price entry needed.' : '';
+  }
+
   async function generateMissing() {
     var used = products.map(function (p) { return p.barcode || ''; }).filter(Boolean);
     var missing = products.filter(function (p) { return !p.barcode || !p.barcode.trim(); });
@@ -392,17 +418,19 @@
     root.querySelector('#bc-unknown-code').textContent = lastScanned;
     root.querySelector('#bc-unknown-name').value = lastScanned;
     root.querySelector('#bc-unknown-price').value = '';
-    root.querySelector('#bc-assign-area').style.display = 'none';
+    showAssignArea();
     setPane('unknown');
   }
 
-  function toggleAssignArea() {
-    var area = root.querySelector('#bc-assign-area');
-    if (area.style.display !== 'none') { area.style.display = 'none'; return; }
-    root.querySelector('#bc-assign-product').innerHTML = products.map(function (p) {
-      return '<option value="' + p.id + '">' + esc(p.name) + '</option>';
-    }).join('');
-    area.style.display = 'block';
+  function showAssignArea() {
+    root.querySelector('#bc-unknown-manual').style.display = 'none';
+    root.querySelector('#bc-assign-area').style.display = 'block';
+    renderUnassigned();
+  }
+
+  function showManualArea() {
+    root.querySelector('#bc-assign-area').style.display = 'none';
+    root.querySelector('#bc-unknown-manual').style.display = 'block';
   }
 
   async function finishUnknown(mode) {
@@ -428,12 +456,13 @@
         renderAssign(); renderLabels();
       } else if (mode === 'assign') {
         var id = Number(root.querySelector('#bc-assign-product').value);
-        if (!id) { toast('Choose a product', true); return; }
-        await saveBarcode(id, lastScanned);
         var prod = products.find(function (p) { return p.id === id; });
+        if (!prod) { toast('Choose a product', true); return; }
+        if (hasBarcode(prod)) { toast(prod.name + ' already has a barcode', true); return; }
+        await saveBarcode(id, lastScanned);
         removeBlankCode(lastScanned);
         deliver(prod);
-        renderAssign(); renderLabels();
+        renderAssign(); renderLabels(); renderUnassigned();
       }
       setPane('scan');
       if (!scanning) await startScan();
@@ -539,6 +568,7 @@
       '.bc-toolbar input[type=search]{flex:1;min-width:200px;padding:9px 11px;border:1px solid #ccc;border-radius:8px;font-size:14px}' +
       '.bc-toolbar button,.bc-actions button{padding:8px 12px;border:1px solid #3b2a1a;background:#3b2a1a;color:#fff;border-radius:8px;cursor:pointer;font-size:12px}' +
       '.bc-toolbar button.bc-alt,.bc-actions button.bc-alt{background:#fff;color:#3b2a1a}' +
+      '.bc-toolbar button:disabled{opacity:.45;cursor:not-allowed}' +
       '.bc-actions button.bc-danger{background:#fff;color:#9d0208;border-color:#9d0208}' +
       '.bc-row{display:flex;align-items:center;gap:12px;padding:9px;border:1px solid #eee;border-radius:10px;margin-bottom:7px}' +
       '.bc-mini-wrap{width:130px;flex:0 0 130px;text-align:center}.bc-mini-wrap svg{max-width:130px;height:42px}' +
@@ -593,11 +623,18 @@
       '<p id="bc-scanstatus">Camera off.</p></div></div></div>' +
       '<div class="bc-pane" id="bc-pane-unknown"><div class="bc-unknown">' +
       '<h3>Sticker not labelled yet</h3>' +
-      '<p class="bc-unknown-note">Scan the blank sticker once, then choose the product it belongs to. It will be added to the bill immediately. You can also bill it without saving a product.</p>' +
+      '<p class="bc-unknown-note">Choose the inventory product this sticker belongs to. Only products without a barcode are shown, and the saved inventory price is used automatically.</p>' +
       '<p class="bc-scanned">Scanned: <b id="bc-unknown-code"></b></p>' +
+      '<div id="bc-assign-area">' +
+      '<div class="bc-toolbar"><select id="bc-assign-product"></select><button type="button" id="bc-assign-confirm">Assign & add</button><button type="button" id="bc-show-manual" class="bc-alt">Bill without assigning</button><button type="button" id="bc-unknown-cancel" class="bc-alt">Back to scan</button></div>' +
+      '<p id="bc-assign-price" class="bc-note"></p>' +
+      '<p id="bc-unassigned-empty" class="bc-empty" style="display:none">Every inventory product already has a barcode. Add a new product first, or bill without assigning.</p>' +
+      '</div>' +
+      '<div id="bc-unknown-manual" style="display:none">' +
+      '<p class="bc-unknown-note">Bill this code without assigning it to inventory. Enter a name and price below.</p>' +
       '<div class="bc-toolbar"><input id="bc-unknown-name" placeholder="Item name (new product only)" /><input id="bc-unknown-price" type="number" min="0" step="0.01" placeholder="Price ₹ (new product only)" /></div>' +
-      '<div class="bc-toolbar"><button type="button" id="bc-add-manual">Add to cart only</button><button type="button" id="bc-save-product">Save as product & add</button><button type="button" id="bc-assign-existing" class="bc-alt">Assign to existing product</button><button type="button" id="bc-unknown-cancel" class="bc-alt">Back to scan</button></div>' +
-      '<div id="bc-assign-area" style="display:none"><select id="bc-assign-product"></select><button type="button" id="bc-assign-confirm">Assign & add</button></div>' +
+      '<div class="bc-toolbar"><button type="button" id="bc-add-manual">Add to cart only</button><button type="button" id="bc-save-product">Save as product & add</button><button type="button" id="bc-assign-existing" class="bc-alt">Choose from inventory</button></div>' +
+      '</div>' +
       '</div></div>' +
       '<div class="bc-pane" id="bc-pane-labels"><div class="bc-toolbar">' +
       '<select id="bc-size"><option value="20x15" selected>20 × 15 mm (landscape)</option><option value="15x20">15 × 20 mm</option></select>' +
@@ -651,7 +688,9 @@
     };
     root.querySelector('#bc-add-manual').onclick = function () { finishUnknown('manual'); };
     root.querySelector('#bc-save-product').onclick = function () { finishUnknown('new'); };
-    root.querySelector('#bc-assign-existing').onclick = toggleAssignArea;
+    root.querySelector('#bc-assign-existing').onclick = showAssignArea;
+    root.querySelector('#bc-show-manual').onclick = showManualArea;
+    root.querySelector('#bc-assign-product').onchange = updateAssignedPrice;
     root.querySelector('#bc-assign-confirm').onclick = function () { finishUnknown('assign'); };
     root.querySelector('#bc-unknown-cancel').onclick = async function () { setPane('scan'); if (!scanning) await startScan(); };
     root.querySelector('#bc-selall').onclick = function () {

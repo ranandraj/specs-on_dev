@@ -18,8 +18,8 @@ The shopkeeper now prints **blank stickers first** and labels them later by scan
 4. **Scan** tab / billing button
    - On the billing screen, use **SCAN BARCODE** for the camera, or **BARCODE TOOLS** (next to **SEARCH CATALOG**) to switch the sidebar to Barcode Tools. On standalone `/pos`, it opens the tools popup.
    - Allow camera access and point the device camera at a sticker. Code 128, EAN/UPC and other common formats are supported.
-   - A blank sticker you generated shows **Sticker not labelled yet**. Choose the product it belongs to and press **Assign & add** — the item goes straight into the bill and the code is saved to `products.barcode`.
-   - You can also **Add to cart only** (bill without saving a product) or **Save as product & add** (create a new inventory item with that barcode).
+   - A blank sticker you generated shows **Sticker not labelled yet**. The picker lists only inventory products that still have **no barcode**, each with its saved price. Choose the product and press **Assign & add** — the item goes straight into the bill using that saved price, and the code is saved to `products.barcode`. No price is asked for in this path.
+   - If the sticker is not for an existing inventory item, choose **Bill without assigning** to **Add to cart only** (bill without saving a product) or **Save as product & add** (create a new inventory item with that barcode).
    - If the camera cannot read a code, type or paste it into **Or type / paste barcode here** and press **Use code**.
    - A scan from any page is added to the bill; the app returns to the billing panel automatically.
 5. **Assign** tab (optional manual management)
