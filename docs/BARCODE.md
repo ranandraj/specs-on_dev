@@ -27,6 +27,12 @@ The shopkeeper now prints **blank stickers first** and labels them later by scan
    - A small live Code 128 preview is shown next to each assigned product.
    - The same barcode field is also available in the **Inventory → Add / Edit Products** form.
 
+## Scan delivery and bill drafts
+
+- A labelled barcode is handed to the POS with an acknowledgement. If the billing panel is not mounted yet (for example, the scan happened on another page), the scan is retried until the cart accepts it, so the **first** scan is not lost. Each scan is added once.
+- An unfinished bill is stored only in this browser's local storage: cart items, customer name/phone/address, remarks, reference number, billing date, eye prescription, payment mode, amount received, coupon, discounts, GST settings, and the custom-item form.
+- The draft survives page changes, refreshes, and new tabs in the same browser. It is removed by **CLEAR ORDER** or after a successful **Complete Sale**.
+
 ## Files
 
 - `assets/barcode-tools.js` — blank batch generation, blank label preview/printing, camera scanner, assignment UI.

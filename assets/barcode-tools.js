@@ -30,6 +30,9 @@
   var scanHint = null;
   var inlineMode = false;
   var scanMode = 'billing';
+  var pendingDeliveryId = null;
+  var pendingDeliveryTimer = null;
+  var pendingDeliveryAck = null;
   var labelSize = '20x15';
   var BLANK_KEY = 'specs.blankBarcodes';
   var blankCodes = [];
@@ -400,8 +403,40 @@
     if (scanStatusEl) scanStatusEl.textContent = 'Camera off.';
   }
 
+  function clearPendingDelivery() {
+    if (pendingDeliveryTimer) { clearInterval(pendingDeliveryTimer); pendingDeliveryTimer = null; }
+    if (pendingDeliveryAck) { window.removeEventListener('specs:barcode-added', pendingDeliveryAck); pendingDeliveryAck = null; }
+    pendingDeliveryId = null;
+  }
+
   function deliver(p) {
-    window.dispatchEvent(new CustomEvent('specs:barcode-scanned', { detail: p }));
+    clearPendingDelivery();
+    var id = 'scan-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    var payload = Object.assign({}, p, { scanId: id });
+    pendingDeliveryId = id;
+    try { sessionStorage.setItem('specs.pendingBarcodeProduct', JSON.stringify(payload)); } catch (e) {}
+    pendingDeliveryAck = function (e) {
+      if (!e.detail || e.detail.scanId !== id) return;
+      clearPendingDelivery();
+      try { sessionStorage.removeItem('specs.pendingBarcodeProduct'); } catch (err) {}
+    };
+    window.addEventListener('specs:barcode-added', pendingDeliveryAck);
+    window.dispatchEvent(new CustomEvent('specs:barcode-scanned', { detail: payload }));
+    var tries = 0;
+    pendingDeliveryTimer = setInterval(function () {
+      var raw = null;
+      try { raw = sessionStorage.getItem('specs.pendingBarcodeProduct'); } catch (e) {}
+      if (!raw) { clearPendingDelivery(); return; }
+      try { if (JSON.parse(raw).scanId !== id) { clearPendingDelivery(); return; } } catch (e) { clearPendingDelivery(); return; }
+      tries++;
+      if (tries > 30) {
+        clearPendingDelivery();
+        try { sessionStorage.removeItem('specs.pendingBarcodeProduct'); } catch (err) {}
+        return;
+      }
+      window.dispatchEvent(new CustomEvent('specs:barcode-scanned', { detail: payload }));
+    }, 300);
+    setTimeout(function () { if (pendingDeliveryId === id) clearPendingDelivery(); }, 12000);
     toast('Added ' + p.name + ' · ' + priceOf(p));
   }
 
@@ -489,7 +524,6 @@
         showScanError('Non-labeled barcode. Use Scan for assigning to label it first.');
         return;
       }
-      sessionStorage.setItem('specs.pendingBarcodeProduct', JSON.stringify(p));
       stopScan();
       if (/^\/pos(\/|$)/.test(location.pathname)) deliver(p);
       else { toast('Adding ' + p.name + ' to bill…'); location.href = '/?specsView=pos'; }
@@ -794,8 +828,8 @@
     buildUI();
     var pending = sessionStorage.getItem('specs.pendingBarcodeProduct');
     if (pending && /^\/pos(\/|$)/.test(location.pathname)) {
-      sessionStorage.removeItem('specs.pendingBarcodeProduct');
-      try { deliver(JSON.parse(pending)); } catch (e) {}
+      try { deliver(JSON.parse(pending)); }
+      catch (e) { try { sessionStorage.removeItem('specs.pendingBarcodeProduct'); } catch (err) {} }
     }
   }
 
